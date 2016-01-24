@@ -456,7 +456,6 @@ class NormalizedDiscountedCumulativeGain(object):
         # Get the maximum relevance score and maximum number of documents
         # per a query from the specified set(s) of queries...
         if queries is not None and len(queries) > 0:
-            print('yay!')
             max_relevance = max([qs.highest_relevance() for qs in queries])
             max_documents = max([qs.longest_document_list() for qs in queries])
         else:

@@ -29,6 +29,7 @@ from sklearn.ensemble import RandomForestRegressor
 
 from sklearn.utils import check_random_state
 
+from pines.estimators import DecisionTreeRegressor as PinesDecisionTreeRegressor
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.tree import ExtraTreeRegressor
 from sklearn.tree._tree import TREE_UNDEFINED, TREE_LEAF
@@ -133,7 +134,7 @@ def compute_newton_gradient_steps(estimator, queries, ranking_scores, metric,
                                   lambdas, weights, query_scales=None,
                                   relevance_scores=None, query_weights=None,
                                   document_weights=None, random_state=None,
-                                  n_jobs=1):
+                                  n_jobs=1, use_pines=False):
     '''
     Compute a single gradient step for each terminal node of the given
     regression tree estimator using Newton's method.
@@ -177,9 +178,13 @@ def compute_newton_gradient_steps(estimator, queries, ranking_scores, metric,
 
     for estimator in estimators:
         # Get the number of nodes in the current regression tree.
-        node_count = estimator.tree_.node_count
-
-        indices = estimator.tree_.apply(
+        if use_pines:
+            node_count = estimator._tree.num_of_nodes() + 1
+            indices = estimator._tree.apply(
+                                    queries.feature_vectors).astype('int32')
+        else:
+            node_count = estimator.tree_.node_count
+            indices = estimator.tree_.apply(
                                     queries.feature_vectors).astype('int32')
 
         # To get mathematically correct Newton steps in every terminal node
@@ -204,8 +209,11 @@ def compute_newton_gradient_steps(estimator, queries, ranking_scores, metric,
                       out=gradients)
 
         # Find terminal nodes which got NaN as a resulting Newton's step.
-        nan_gradients_mask = (np.isnan(gradients) & 
-                              (estimator.tree_.children_left == TREE_LEAF))
+        if use_pines:
+            nan_gradients_mask = (np.isnan(gradients) & estimator._tree.leaf_mask())
+        else:
+            nan_gradients_mask = (np.isnan(gradients) &
+                                  (estimator.tree_.children_left == TREE_LEAF))
 
         if nan_gradients_mask.any():
             # If there is a NaN in gradients it means there is a tree leaf
@@ -234,7 +242,10 @@ def compute_newton_gradient_steps(estimator, queries, ranking_scores, metric,
 
         # Remarkably, numpy.copyto method side-steps the access protection
         # of `tree_.value` array, which is supposed to be 'read-only'.
-        np.copyto(estimator.tree_.value, gradients.reshape(-1, 1, 1))
+        if use_pines:
+            estimator._tree._leaf_values[:gradients.size] = gradients
+        else:
+            np.copyto(estimator.tree_.value, gradients.reshape(-1, 1, 1))
 
 
 class LambdaMART(object):
@@ -321,7 +332,7 @@ class LambdaMART(object):
                  min_samples_leaf=1, shrinkage=0.1, use_newton_method=True,
                  use_random_forest=0, random_thresholds=False,
                  use_logit_boost=False, estopping=50, min_n_estimators=1,
-                 base_model=None, n_jobs=1, random_state=None):
+                 base_model=None, n_jobs=1, random_state=None, use_pines=False):
         self.estimators = []
         self.n_estimators = n_estimators
         self.min_n_estimators = min_n_estimators
@@ -342,6 +353,7 @@ class LambdaMART(object):
         self.training_performance = None
         self.validation_performance = None
         self.best_performance = None
+        self.use_pines = use_pines
         self.random_state = check_random_state(random_state)
 
         # Force the use of newer version of scikit-learn.
@@ -624,6 +636,8 @@ class LambdaMART(object):
             # Build the predictor for the gradients of the loss using either
             # decision tree or random forest.
             if self.use_random_forest > 0:
+                if self.use_pines:
+                    raise NotImplementedError('Random forest is not implemented in pines library')
                 estimator = RandomForestRegressor(
                                 n_estimators=self.use_random_forest,
                                 max_depth=self.max_depth,
@@ -641,6 +655,8 @@ class LambdaMART(object):
 
             else:
                 if self.random_thresholds:
+                    if self.use_pines:
+                        raise NotImplementedError('Random thresholds are not implemented in pines library')
                     estimator = ExtraTreeRegressor(
                                     max_depth=self.max_depth,
                                     max_leaf_nodes=self.max_leaf_nodes,
@@ -649,13 +665,23 @@ class LambdaMART(object):
                                     min_samples_leaf=self.min_samples_leaf,
                                     random_state=self.random_state)
                 else:
-                    estimator = DecisionTreeRegressor(
-                                    max_depth=self.max_depth,
-                                    max_leaf_nodes=self.max_leaf_nodes,
-                                    max_features=self.max_features,
-                                    min_samples_split=self.min_samples_split,
-                                    min_samples_leaf=self.min_samples_leaf,
-                                    random_state=self.random_state)
+                    if self.use_pines:
+                        estimator = PinesDecisionTreeRegressor(
+                                        max_depth=self.max_depth,
+                                        #max_leaf_nodes=self.max_leaf_nodes,
+                                        #max_features=self.max_features,
+                                        #min_samples_split=self.min_samples_split,
+                                        min_samples_per_leaf=self.min_samples_leaf,
+                                        #random_state=self.random_state
+                                    )
+                    else:
+                        estimator = DecisionTreeRegressor(
+                                        max_depth=self.max_depth,
+                                        max_leaf_nodes=self.max_leaf_nodes,
+                                        max_features=self.max_features,
+                                        min_samples_split=self.min_samples_split,
+                                        min_samples_leaf=self.min_samples_leaf,
+                                        random_state=self.random_state)
 
                 if self.use_logit_boost:
                     with np.errstate(invalid='ignore'):
@@ -748,7 +774,8 @@ class LambdaMART(object):
                                               None, training_query_weights,
                                               document_weights,
                                               random_state=self.random_state,
-                                              n_jobs=self.n_jobs)
+                                              n_jobs=self.n_jobs,
+                                              use_pines=self.use_pines)
 
                 # Store the true and estimated gradients for later analysis.
                 if self.trace_gradients:
