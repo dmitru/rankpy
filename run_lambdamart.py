@@ -4,6 +4,7 @@ import numpy as np
 
 import logging
 
+from pines.tree_builders import ObliviousCartSwitchCriterionType, TreeType
 from rankpy.queries import Queries
 from rankpy.queries import find_constant_features
 
@@ -59,8 +60,13 @@ logging.info('Test queries: %s' % test_queries)
 logging.info('================================================================================')
 
 model = LambdaMART(metric='NDCG@10', max_leaf_nodes=7, shrinkage=0.1,
-                   estopping=50, n_jobs=-1, min_samples_leaf=50,
-                   random_state=42, use_pines=False)
+                   estopping=50, n_jobs=-1, min_samples_leaf=50, max_depth=10,
+                   random_state=42, use_pines=True,
+                   pines_kwargs=dict(
+                    switch_criterion=ObliviousCartSwitchCriterionType.OBLIVIOUS_WHILE_CAN,
+                    tree_type=TreeType.OBLIVIOUS_CART,
+                    max_n_splits=7,
+                   ))
 
 model.fit(training_queries, validation_queries=validation_queries)
 

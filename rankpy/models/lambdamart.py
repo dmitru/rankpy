@@ -332,7 +332,8 @@ class LambdaMART(object):
                  min_samples_leaf=1, shrinkage=0.1, use_newton_method=True,
                  use_random_forest=0, random_thresholds=False,
                  use_logit_boost=False, estopping=50, min_n_estimators=1,
-                 base_model=None, n_jobs=1, random_state=None, use_pines=False):
+                 base_model=None, n_jobs=1, random_state=None, use_pines=False,
+                 pines_kwargs={}):
         self.estimators = []
         self.n_estimators = n_estimators
         self.min_n_estimators = min_n_estimators
@@ -354,6 +355,7 @@ class LambdaMART(object):
         self.validation_performance = None
         self.best_performance = None
         self.use_pines = use_pines
+        self.pines_kwargs = pines_kwargs
         self.random_state = check_random_state(random_state)
 
         # Force the use of newer version of scikit-learn.
@@ -666,14 +668,7 @@ class LambdaMART(object):
                                     random_state=self.random_state)
                 else:
                     if self.use_pines:
-                        estimator = PinesDecisionTreeRegressor(
-                                        max_depth=self.max_depth,
-                                        #max_leaf_nodes=self.max_leaf_nodes,
-                                        #max_features=self.max_features,
-                                        #min_samples_split=self.min_samples_split,
-                                        min_samples_per_leaf=self.min_samples_leaf,
-                                        #random_state=self.random_state
-                                    )
+                        estimator = PinesDecisionTreeRegressor(**self.pines_kwargs)
                     else:
                         estimator = DecisionTreeRegressor(
                                         max_depth=self.max_depth,
