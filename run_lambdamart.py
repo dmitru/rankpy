@@ -15,21 +15,21 @@ from rankpy.models import LambdaMART
 logging.basicConfig(format='%(asctime)s : %(message)s', level=logging.INFO)
 
 # Load the query datasets.
-training_queries = Queries.load_from_text('data/MQ2007/Fold2/train.txt')
-validation_queries = Queries.load_from_text('data/MQ2007/Fold2/vali.txt')
-test_queries = Queries.load_from_text('data/MQ2007/Fold2/test.txt')
+training_queries = Queries.load_from_text('data/MQ2007/Fold1/train.txt')
+validation_queries = Queries.load_from_text('data/MQ2007/Fold1/vali.txt')
+test_queries = Queries.load_from_text('data/MQ2007/Fold1/test.txt')
 
 logging.info('================================================================================')
 
 # Save them to binary format ...
-training_queries.save('data/MQ2007/Fold2/training')
-validation_queries.save('data/MQ2007/Fold2/validation')
-test_queries.save('data/MQ2007/Fold2/test')
+training_queries.save('data/MQ2007/Fold1/training')
+validation_queries.save('data/MQ2007/Fold1/validation')
+test_queries.save('data/MQ2007/Fold1/test')
 
 # ... because loading them will be then faster.
-training_queries = Queries.load('data/MQ2007/Fold2/training')
-validation_queries = Queries.load('data/MQ2007/Fold2/validation')
-test_queries = Queries.load('data/MQ2007/Fold2/test')
+training_queries = Queries.load('data/MQ2007/Fold1/training')
+validation_queries = Queries.load('data/MQ2007/Fold1/validation')
+test_queries = Queries.load('data/MQ2007/Fold1/test')
 
 logging.info('================================================================================')
 
@@ -59,14 +59,18 @@ logging.info('Test queries: %s' % test_queries)
 
 logging.info('================================================================================')
 
-model = LambdaMART(metric='NDCG@10', max_leaf_nodes=7, shrinkage=0.1,
-                   estopping=50, n_jobs=-1, min_samples_leaf=50, max_depth=10,
-                   random_state=42, use_pines=True,
-                   pines_kwargs=dict(
-                    switch_criterion=ObliviousCartSwitchCriterionType.OBLIVIOUS_WHILE_CAN,
-                    tree_type=TreeType.OBLIVIOUS_CART,
-                    max_n_splits=7,
-                   ))
+model = LambdaMART(
+    metric='NDCG@10', max_leaf_nodes=7, shrinkage=0.1,
+    estopping=30, n_jobs=-1,
+    random_state=42, use_pines=True,
+    pines_kwargs=dict(
+        switch_criterion=ObliviousCartSwitchCriterionType.OBLIVIOUS_WHILE_CAN,
+        tree_type=TreeType.OBLIVIOUS_CART,
+        max_n_splits=10,
+        min_samples_leaf=50,
+        max_depth=10,
+    )
+)
 
 model.fit(training_queries, validation_queries=validation_queries)
 
